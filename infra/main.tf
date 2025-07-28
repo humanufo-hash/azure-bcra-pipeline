@@ -27,3 +27,9 @@ module "cotizaciones_lake" {
   location = "eastus"
   prefix   = "cotizaciones" # se convertirá en algo como cotizacionesa1b2
 }
+module "synapse_ws" {
+  source        = "../modules/synapse"
+  rg_name       = "tfstate-rg"
+  location      = "eastus"
+  storage_name  = module.cotizaciones_lake.account_name
+}

@@ -19,3 +19,11 @@ provider "azurerm" {
 
 # placeholder (se elimina luego)
 resource "null_resource" "bootstrap" {}
+
+module "cotizaciones_lake" {
+  source   = "../modules/storage"
+
+  rg_name  = "tfstate-rg"   # puedes dejar el mismo RG
+  location = "eastus"
+  prefix   = "cotizaciones" # se convertirá en algo como cotizacionesa1b2
+}

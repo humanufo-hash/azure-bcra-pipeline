@@ -30,6 +30,7 @@ module "cotizaciones_lake" {
 module "synapse_ws" {
   source        = "../modules/synapse"
   rg_name       = "tfstate-rg"
-  location      = "eastus"
+  location      = "eastus2"          # ← cambia aquí
   storage_name  = module.cotizaciones_lake.account_name
 }
+

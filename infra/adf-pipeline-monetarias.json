@@ -1,0 +1,154 @@
+{
+  "name": "pipeline-bcra-monetarias-transform",
+  "properties": {
+    "description": "Pipeline para transformar datos JSON de BCRA a formato Parquet optimizado",
+    "activities": [
+      {
+        "name": "CopyJSONToParquet",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "7.00:00:00",
+          "retry": 3,
+          "retryIntervalInSeconds": 30
+        },
+        "userProperties": [],
+        "typeProperties": {
+          "source": {
+            "type": "JsonSource",
+            "storeSettings": {
+              "type": "AzureBlobFSReadSettings",
+              "recursive": true,
+              "wildcardFolderPath": "raw/monetarias/year={year}/month={month}/day={day}",
+              "wildcardFileName": "vars_*.json",
+              "enablePartitionDiscovery": false
+            },
+            "formatSettings": {
+              "type": "JsonReadSettings"
+            }
+          },
+          "sink": {
+            "type": "ParquetSink",
+            "storeSettings": {
+              "type": "AzureBlobFSWriteSettings"
+            },
+            "formatSettings": {
+              "type": "ParquetWriteSettings"
+            }
+          },
+          "enableStaging": false,
+          "translator": {
+            "type": "TabularTranslator",
+            "mappings": [
+              {
+                "source": {
+                  "path": "$['idVariable']"
+                },
+                "sink": {
+                  "name": "id_variable",
+                  "type": "String"
+                }
+              },
+              {
+                "source": {
+                  "path": "$['cdSerie']"
+                },
+                "sink": {
+                  "name": "codigo_serie",
+                  "type": "String"
+                }
+              },
+              {
+                "source": {
+                  "path": "$['descripcion']"
+                },
+                "sink": {
+                  "name": "descripcion",
+                  "type": "String"
+                }
+              },
+              {
+                "source": {
+                  "path": "$['fecha']"
+                },
+                "sink": {
+                  "name": "fecha",
+                  "type": "DateTime"
+                }
+              },
+              {
+                "source": {
+                  "path": "$['valor']"
+                },
+                "sink": {
+                  "name": "valor",
+                  "type": "Decimal"
+                }
+              }
+            ]
+          }
+        },
+        "inputs": [
+          {
+            "referenceName": "ds_json_monetarias_source",
+            "type": "DatasetReference",
+            "parameters": {
+              "year": {
+                "value": "@formatDateTime(utcnow(), 'yyyy')",
+                "type": "Expression"
+              },
+              "month": {
+                "value": "@formatDateTime(utcnow(), 'MM')",
+                "type": "Expression"
+              },
+              "day": {
+                "value": "@formatDateTime(utcnow(), 'dd')",
+                "type": "Expression"
+              }
+            }
+          }
+        ],
+        "outputs": [
+          {
+            "referenceName": "ds_parquet_monetarias_sink",
+            "type": "DatasetReference",
+            "parameters": {
+              "year": {
+                "value": "@formatDateTime(utcnow(), 'yyyy')",
+                "type": "Expression"
+              },
+              "month": {
+                "value": "@formatDateTime(utcnow(), 'MM')",
+                "type": "Expression"
+              },
+              "day": {
+                "value": "@formatDateTime(utcnow(), 'dd')",
+                "type": "Expression"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "parameters": {
+      "year": {
+        "type": "string",
+        "defaultValue": "@formatDateTime(utcnow(), 'yyyy')"
+      },
+      "month": {
+        "type": "string", 
+        "defaultValue": "@formatDateTime(utcnow(), 'MM')"
+      },
+      "day": {
+        "type": "string",
+        "defaultValue": "@formatDateTime(utcnow(), 'dd')"
+      }
+    },
+    "annotations": [
+      "BCRA",
+      "Monetarias",
+      "JSON to Parquet"
+    ],
+    "lastPublishTime": "2025-07-29T15:55:00Z"
+  }
+}

@@ -1,0 +1,153 @@
+name: Deploy BCRA Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: cotiz-func-o877
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }} Environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 'Install dependencies'
+      shell: bash
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+        popd
+
+    - name: 'Run unit tests'
+      shell: bash
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        python -m pytest tests/ -v --cov=src --cov-report=xml
+        popd
+
+    - name: 'Upload coverage to Codecov'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }} Environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 'Install dependencies'
+      shell: bash
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        popd
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Deploy Azure Functions'
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 'Verify deployment'
+      shell: bash
+      run: |
+        echo "Verifying function deployment..."
+        az functionapp function list --name ${{ env.AZURE_FUNCTIONAPP_NAME }} --resource-group tfstate-rg --output table
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Setup Terraform'
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0
+
+    - name: 'Terraform Init'
+      run: |
+        cd infra
+        terraform init
+
+    - name: 'Terraform Plan'
+      run: |
+        cd infra
+        terraform plan -out=tfplan
+
+    - name: 'Terraform Apply'
+      if: github.ref == 'refs/heads/main'
+      run: |
+        cd infra
+        terraform apply -auto-approve tfplan
+
+  monitoring:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Run health checks'
+      shell: bash
+      run: |
+        echo "Running post-deployment health checks..."
+        
+        # Check function app status
+        az functionapp show --name ${{ env.AZURE_FUNCTIONAPP_NAME }} --resource-group tfstate-rg --query "state" -o tsv
+        
+        # Check Event Grid subscription
+        az eventgrid event-subscription show --name monetarias-created \
+          --source-resource-id "/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/tfstate-rg/providers/Microsoft.Storage/storageAccounts/cotizacionesbrfd" \
+          --query "provisioningState" -o tsv
+        
+        # Test blob creation (optional)
+        echo '{"test": "ci-cd-deployment", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' | \
+        az storage blob upload --account-name cotizacionesbrfd --container-name datalake \
+          --name "raw/monetarias/year=$(date +%Y)/month=$(date +%m)/day=$(date +%d)/cicd_test_$(date +%Y%m%d_%H%M%S).json" \
+          --data @- --overwrite
+        
+        echo "Health checks completed successfully!"

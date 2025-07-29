@@ -33,4 +33,11 @@ module "synapse_ws" {
   location      = "eastus2"          # ← cambia aquí
   storage_name  = module.cotizaciones_lake.account_name
 }
-
+module "ingest_function" {
+  source   = "../modules/function_app"
+  rg_name  = "tfstate-rg"
+  location = "centralus"          # ← región con cuota Y1
+  prefix   = "cotiz"
+  datalake_account           = module.cotizaciones_lake.account_name
+  datalake_connection_string = module.cotizaciones_lake.connection_string
+}
